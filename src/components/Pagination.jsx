@@ -8,142 +8,111 @@ const Pagination = ({ currentPage, totalPages, onPageChange, isDarkMode }) => {
     }
   };
 
-  const maxVisiblePages = 5;
-  const half = Math.floor(maxVisiblePages / 2);
-
-  let startPage, endPage;
-
-  if (totalPages <= maxVisiblePages) {
-    startPage = 1;
-    endPage = totalPages;
-  } else {
-    startPage = Math.max(1, currentPage - half);
-    endPage = Math.min(totalPages, currentPage + half);
-
-    if (endPage - startPage + 1 < maxVisiblePages) {
-      if (startPage === 1) {
-        endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
-      } else if (endPage === totalPages) {
-        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+  // Generate the array of page numbers to display
+  const generatePageNumbers = () => {
+    const pages = [];
+    const delta = 1; // Number of pages to show on each side of current page
+    
+    // Always show first page
+    pages.push(1);
+    
+    // Calculate start and end of the middle range
+    let start = Math.max(2, currentPage - delta);
+    let end = Math.min(totalPages - 1, currentPage + delta);
+    
+    // Adjust start and end to show at least 3 pages in the middle when possible
+    if (currentPage <= 3) {
+      end = Math.min(totalPages - 1, 4);
+    } else if (currentPage >= totalPages - 2) {
+      start = Math.max(2, totalPages - 3);
+    }
+    
+    // Add ellipsis before middle range if there's a gap
+    if (start > 2) {
+      pages.push('...');
+    }
+    
+    // Add middle range pages
+    for (let i = start; i <= end; i++) {
+      if (i !== 1 && i !== totalPages) {
+        pages.push(i);
       }
     }
-  }
-
-  const getButtonClass = (isActive = false, isDisabled = false) => {
-    let base = `text-sm px-2 py-1 mx-0.5 rounded ${
-      isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-300 text-gray-900'
-    }`;
-
-    if (isActive) {
-      base += ` font-bold ${isDarkMode ? 'bg-gray-600' : 'bg-gray-400'}`;
-    } else if (!isDisabled) {
-      base += ' hover:bg-gray-400 cursor-pointer';
+    
+    // Add ellipsis after middle range if there's a gap
+    if (end < totalPages - 1) {
+      pages.push('...');
     }
-
-    if (isDisabled) {
-      base += ' opacity-50 cursor-not-allowed';
+    
+    // Always show last page (if it's not the first page)
+    if (totalPages > 1) {
+      pages.push(totalPages);
     }
-
-    return base;
+    
+    return pages;
   };
 
+  const pageNumbers = generatePageNumbers();
+
   return (
-    <nav
-      aria-label="Pagination Navigation"
-      className={`flex justify-start items-center p-2 ${
-        isDarkMode ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-900'
-      }`}
-      style={{ gap: '0.25rem' }} // small gap between buttons
-    >
-      {/* Previous Button */}
-      <button
-        onClick={() => handlePageClick(currentPage - 1)}
-        disabled={currentPage === 1}
-        aria-label="Go to previous page"
-        className={getButtonClass(false, currentPage === 1)}
-        style={{ minWidth: '28px' }}
-      >
-        &lt;
-      </button>
-
-      {/* First Page */}
-      {startPage > 1 && (
-        <>
-          <button
-            onClick={() => handlePageClick(1)}
-            className={getButtonClass(currentPage === 1)}
-            aria-current={currentPage === 1 ? 'page' : undefined}
-            aria-label={`Go to page 1`}
-            style={{ minWidth: '28px' }}
-          >
-            1
-          </button>
-
-          {startPage > 2 && (
-            <span
-              className="select-none text-sm px-2"
-              aria-hidden="true"
-              style={{ minWidth: '20px', textAlign: 'center' }}
-            >
-              &hellip;
-            </span>
-          )}
-        </>
-      )}
-
-      {/* Visible Page Numbers */}
-      {[...Array(endPage - startPage + 1).keys()].map((index) => {
-        const page = startPage + index;
-        return (
-          <button
-            key={page}
-            onClick={() => handlePageClick(page)}
-            className={getButtonClass(currentPage === page)}
-            aria-current={currentPage === page ? 'page' : undefined}
-            aria-label={`Go to page ${page}`}
-            aria-disabled={currentPage === page}
-            tabIndex={currentPage === page ? -1 : 0}
-            style={{ minWidth: '28px' }}
-          >
-            {page}
-          </button>
-        );
-      })}
-
-      {/* Ellipsis after visible pages */}
-      {endPage < totalPages - 1 && (
-        <span
-          className="select-none text-sm px-2"
-          aria-hidden="true"
-          style={{ minWidth: '20px', textAlign: 'center' }}
-        >
-          &hellip;
-        </span>
-      )}
-
-      {/* Last Page */}
-      {endPage < totalPages && (
+    <nav aria-label="Pagination Navigation" className="flex justify-start mt-4">
+      <div className={`flex items-center p-1 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-300'}`}>
+        {/* Previous Button */}
         <button
-          onClick={() => handlePageClick(totalPages)}
-          className={getButtonClass(currentPage === totalPages)}
-          aria-current={currentPage === totalPages ? 'page' : undefined}
-          aria-label={`Go to page ${totalPages}`}
-          style={{ minWidth: '28px' }}
+          onClick={() => handlePageClick(currentPage - 1)}
+          disabled={currentPage === 1}
+          aria-label="Go to previous page"
+          className={`px-3 py-1 rounded transition-colors ${
+            currentPage === 1 
+              ? 'opacity-50 cursor-not-allowed' 
+              : 'hover:bg-gray-600'
+          } ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
         >
-          {totalPages}
+          &lt;
         </button>
-      )}
 
-      {/* Next Button */}
-      <button
-        onClick={() => handlePageClick(currentPage + 1)}
-        disabled={currentPage === totalPages}
-        aria-label="Go to next page"
-        className={getButtonClass(false, currentPage === totalPages)}
-        style={{ minWidth: '28px' }}
-      >
-        &gt;
-      </button>
+        {/* Page Numbers */}
+        {pageNumbers.map((page, index) => {
+          if (page === '...') {
+            return (
+              <span 
+                key={`ellipsis-${index}`} 
+                className={`px-3 py-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+              >
+                ...
+              </span>
+            );
+          }
+          
+          return (
+            <button
+              key={page}
+              onClick={() => handlePageClick(page)}
+              className={`px-3 py-1 rounded transition-colors ${
+                currentPage === page 
+                  ? `font-bold ${isDarkMode ? 'bg-gray-500 text-white' : 'bg-gray-500 text-white'}` 
+                  : `${isDarkMode ? 'text-white hover:bg-gray-600' : 'text-gray-900 hover:bg-gray-400'}`
+              }`}
+            >
+              {page}
+            </button>
+          );
+        })}
+
+        {/* Next Button */}
+        <button
+          onClick={() => handlePageClick(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          aria-label="Go to next page"
+          className={`px-3 py-1 rounded transition-colors ${
+            currentPage === totalPages 
+              ? 'opacity-50 cursor-not-allowed' 
+              : 'hover:bg-gray-600'
+          } ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+        >
+          &gt;
+        </button>
+      </div>
     </nav>
   );
 };
