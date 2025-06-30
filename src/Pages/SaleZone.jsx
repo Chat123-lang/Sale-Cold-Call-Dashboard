@@ -88,7 +88,8 @@ const SaleZone = () => {
       setError(null);
 
       const currentSearchText = searchText || categoryMapping[filters.category]?.searchText || 'takeaway';
-      const url = `https://sale.mega-data.co.uk/google-map-data/?search_txt=${currentSearchText}&page=${page}`;
+      // Updated API URL - changed from search_txt to search parameter
+      const url = `https://sale.mega-data.co.uk/google-map-data/?search=${currentSearchText}&page=${page}`;
 
       const response = await fetch(url, {
         method: 'GET',
@@ -125,7 +126,7 @@ const SaleZone = () => {
     }
   };
 
-  // Search shops across all categories using API
+  // Search shops within the current category only
   const searchShopsAPI = async (searchQuery) => {
     if (!searchQuery.trim()) {
       setIsSearchMode(false);
@@ -138,9 +139,13 @@ const SaleZone = () => {
       setSearchError(null);
       setIsSearchMode(true);
 
-      const searchPromises = orderedCategories.map(async (category) => {
-        const searchText = categoryMapping[category]?.searchText || category;
-        const url = `https://sale.mega-data.co.uk/google-map-data/?search_txt=${searchText}&page=1`;
+      // Only search within the current category
+      const currentCategory = filters.category;
+      const searchText = categoryMapping[currentCategory]?.searchText || 'takeaway';
+      
+      // Search multiple pages to get more comprehensive results within the category
+      const searchPromises = [1, 2, 3].map(async (page) => {
+        const url = `https://sale.mega-data.co.uk/google-map-data/?search=${searchText}&page=${page}`;
 
         try {
           const response = await fetch(url, {
@@ -158,7 +163,7 @@ const SaleZone = () => {
           }
           return [];
         } catch (err) {
-          console.error(`Error searching ${category}:`, err);
+          console.error(`Error searching ${currentCategory} page ${page}:`, err);
           return [];
         }
       });
@@ -166,6 +171,7 @@ const SaleZone = () => {
       const allResults = await Promise.all(searchPromises);
       const combinedResults = allResults.flat();
 
+      // Filter results by search query
       const filteredResults = combinedResults.filter((shop) => {
         const searchLower = searchQuery.toLowerCase();
         return (
@@ -177,6 +183,7 @@ const SaleZone = () => {
         );
       });
 
+      // Remove duplicates
       const uniqueResults = filteredResults.filter((shop, index, self) =>
         index === self.findIndex((s) => s.id === shop.id)
       );
@@ -201,7 +208,7 @@ const SaleZone = () => {
     debounceTimer.current = setTimeout(() => {
       searchShopsAPI(searchQuery);
     }, 500);
-  }, []);
+  }, [filters.category]); // Add filters.category as dependency
 
   // Handle search term changes with debounce
   useEffect(() => {
@@ -220,13 +227,22 @@ const SaleZone = () => {
     };
   }, [searchTerm, debouncedSearch]);
 
+  // Clear search when category changes
+  useEffect(() => {
+    if (searchTerm.trim()) {
+      // Re-trigger search for new category
+      debouncedSearch(searchTerm);
+    }
+  }, [filters.category]);
+
   // Fetch all shops for filter options
   const fetchAllShopsForFilters = async (searchText = 'takeaway') => {
     try {
+      // Updated API URLs - changed from search_txt to search parameter
       const responses = await Promise.all([
-        fetch(`https://sale.mega-data.co.uk/google-map-data/?search_txt=${searchText}&page=1`),
-        fetch(`https://sale.mega-data.co.uk/google-map-data/?search_txt=${searchText}&page=2`),
-        fetch(`https://sale.mega-data.co.uk/google-map-data/?search_txt=${searchText}&page=3`)
+        fetch(`https://sale.mega-data.co.uk/google-map-data/?search=${searchText}&page=1`),
+        fetch(`https://sale.mega-data.co.uk/google-map-data/?search=${searchText}&page=2`),
+        fetch(`https://sale.mega-data.co.uk/google-map-data/?search=${searchText}&page=3`)
       ]);
 
       const allData = [];
@@ -278,9 +294,10 @@ const SaleZone = () => {
     setTempFilters({ city: '', postcode: '' });
     setCurrentPage(1);
 
-    if (!searchTerm.trim()) {
-      setIsSearchMode(false);
+    // Clear search results when switching categories
+    if (searchTerm.trim()) {
       setSearchResults([]);
+      setIsSearchMode(false);
     }
 
     const searchText = categoryMapping[newCategory]?.searchText || 'takeaway';
@@ -476,8 +493,8 @@ const SaleZone = () => {
         <div className="mb-4">
           {isSearchMode ? (
             <div>
-              <h2 className="text-xl font-semibold text-gray-200 mb-2">Search Results for "{searchTerm}"</h2>
-              <p className="text-sm text-gray-400">{searchLoading ? 'Searching...' : `Found ${displayShops.length} results across all categories`}</p>
+              <h2 className="text-xl font-semibold text-gray-200 mb-2">Search Results for "{searchTerm}" in {categoryMapping[filters.category]?.label}</h2>
+              <p className="text-sm text-gray-400">{searchLoading ? 'Searching...' : `Found ${displayShops.length} results in ${categoryMapping[filters.category]?.label} category`}</p>
             </div>
           ) : (
             <div>
@@ -491,7 +508,7 @@ const SaleZone = () => {
           <div className="flex justify-center items-center py-8">
             <div className="text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto mb-2"></div>
-              <p className="text-sm text-gray-400">Searching across all categories...</p>
+              <p className="text-sm text-gray-400">Searching in {categoryMapping[filters.category]?.label} category...</p>
             </div>
           </div>
         )}
@@ -517,14 +534,14 @@ const SaleZone = () => {
         {!pageLoading && !searchLoading && !searchError && displayShops.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8">
             <img src={sadMaskImg} alt="Sad Mask" className="w-32 h-32 mb-4" />
-            <p className="text-white text-2xl font-medium text-center" style={{ lineHeight: '1.5' }}>{isSearchMode ? `No results found for "${searchTerm}"` : "Sorry! No results match your filters."} <br /> Please try again.</p>
+            <p className="text-white text-2xl font-medium text-center" style={{ lineHeight: '1.5' }}>{isSearchMode ? `No results found for "${searchTerm}" in ${categoryMapping[filters.category]?.label}` : "Sorry! No results match your filters."} <br /> Please try again.</p>
           </div>
         ) : (
           !pageLoading && !searchLoading && !searchError && (
             <>
               <div className="flex justify-between items-center mb-4">
                 {isSearchMode ? (
-                  <p className="text-sm text-gray-400">Showing {displayShops.length} search results</p>
+                  <p className="text-sm text-gray-400">Showing {displayShops.length} search results in {categoryMapping[filters.category]?.label}</p>
                 ) : (
                   <>
                     <p className="text-sm text-gray-400">Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, totalCount)} of {totalCount} shops</p>
