@@ -1,117 +1,167 @@
-import React from 'react';
+import React, { useState } from 'react';
 import PropTypes from 'prop-types';
 
 const Pagination = ({ currentPage, totalPages, onPageChange, isDarkMode }) => {
+  const [jumpPage, setJumpPage] = useState('');
+
   const handlePageClick = (page) => {
     if (page >= 1 && page <= totalPages && page !== currentPage) {
       onPageChange(page);
     }
   };
 
-  // Generate the array of page numbers to display
+  const handleJumpInputChange = (e) => {
+    const value = e.target.value;
+    if (value === '' || /^\d+$/.test(value)) {
+      setJumpPage(value);
+    }
+  };
+
+  const handleJumpInputKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const pageNumber = parseInt(jumpPage, 10);
+      if (pageNumber >= 1 && pageNumber <= totalPages && pageNumber !== currentPage) {
+        onPageChange(pageNumber);
+        setJumpPage('');
+      }
+    }
+  };
+
   const generatePageNumbers = () => {
     const pages = [];
-    const delta = 1; // Number of pages to show on each side of current page
-    
-    // Always show first page
+    const delta = 1;
+
     pages.push(1);
-    
-    // Calculate start and end of the middle range
+
     let start = Math.max(2, currentPage - delta);
     let end = Math.min(totalPages - 1, currentPage + delta);
-    
-    // Adjust start and end to show at least 3 pages in the middle when possible
+
     if (currentPage <= 3) {
       end = Math.min(totalPages - 1, 4);
     } else if (currentPage >= totalPages - 2) {
       start = Math.max(2, totalPages - 3);
     }
-    
-    // Add ellipsis before middle range if there's a gap
+
     if (start > 2) {
       pages.push('...');
     }
-    
-    // Add middle range pages
+
     for (let i = start; i <= end; i++) {
       if (i !== 1 && i !== totalPages) {
         pages.push(i);
       }
     }
-    
-    // Add ellipsis after middle range if there's a gap
+
     if (end < totalPages - 1) {
       pages.push('...');
     }
-    
-    // Always show last page (if it's not the first page)
+
     if (totalPages > 1) {
       pages.push(totalPages);
     }
-    
+
     return pages;
   };
 
   const pageNumbers = generatePageNumbers();
 
   return (
-    <nav aria-label="Pagination Navigation" className="flex justify-start mt-4">
-      <div className={`flex items-center p-1 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-300'}`}>
-        {/* Previous Button */}
-        <button
-          onClick={() => handlePageClick(currentPage - 1)}
-          disabled={currentPage === 1}
-          aria-label="Go to previous page"
-          className={`px-3 py-1 rounded transition-colors ${
-            currentPage === 1 
-              ? 'opacity-50 cursor-not-allowed' 
-              : 'hover:bg-gray-600'
-          } ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-        >
-          &lt;
-        </button>
+    <nav aria-label="Pagination Navigation" className="flex items-center gap-3 mt-4">
+      {/* Pagination with thin border */}
+      <div className={`flex items-center p-1 rounded-lg border ${isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-300 border-gray-400'}`}>
+        {/* Previous Button with Separator */}
+        <div className="flex items-center">
+          <button
+            onClick={() => handlePageClick(currentPage - 1)}
+            disabled={currentPage === 1}
+            aria-label="Go to previous page"
+            className={`px-3 py-1 rounded transition-colors ${
+              currentPage === 1
+                ? 'opacity-50 cursor-not-allowed'
+                : 'hover:bg-gray-600'
+            } ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          >
+            &lt;
+          </button>
+          {currentPage !== 1 && (
+            <div className={`w-px h-6 mx-1 ${isDarkMode ? 'bg-gray-600' : 'bg-gray-400'}`}></div>
+          )}
+        </div>
 
         {/* Page Numbers */}
         {pageNumbers.map((page, index) => {
           if (page === '...') {
             return (
-              <span 
-                key={`ellipsis-${index}`} 
+              <span
+                key={`ellipsis-${index}`}
                 className={`px-3 py-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
               >
                 ...
               </span>
             );
           }
-          
+
           return (
-            <button
-              key={page}
-              onClick={() => handlePageClick(page)}
-              className={`px-3 py-1 rounded transition-colors ${
-                currentPage === page 
-                  ? `font-bold ${isDarkMode ? 'bg-gray-500 text-white' : 'bg-gray-500 text-white'}` 
-                  : `${isDarkMode ? 'text-white hover:bg-gray-600' : 'text-gray-900 hover:bg-gray-400'}`
-              }`}
-            >
-              {page}
-            </button>
+            <div key={page} className="flex items-center">
+              {index > 0 && (
+                <div className={`w-px h-6 mx-1 ${isDarkMode ? 'bg-gray-600' : 'bg-gray-400'}`}></div>
+              )}
+              <button
+                onClick={() => handlePageClick(page)}
+                className={`px-3 py-1 rounded transition-colors ${
+                  currentPage === page
+                    ? `font-bold ${isDarkMode ? 'bg-gray-500 text-white' : 'bg-gray-500 text-white'}`
+                    : `${isDarkMode ? 'text-white hover:bg-gray-600' : 'text-gray-900 hover:bg-gray-400'}`
+                }`}
+              >
+                {page}
+              </button>
+            </div>
           );
         })}
 
-        {/* Next Button */}
-        <button
-          onClick={() => handlePageClick(currentPage + 1)}
-          disabled={currentPage === totalPages}
-          aria-label="Go to next page"
-          className={`px-3 py-1 rounded transition-colors ${
-            currentPage === totalPages 
-              ? 'opacity-50 cursor-not-allowed' 
-              : 'hover:bg-gray-600'
-          } ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
-        >
-          &gt;
-        </button>
+        {/* Next Button with Separator */}
+        <div className="flex items-center">
+          {currentPage !== totalPages && (
+            <div className={`w-px h-6 mx-1 ${isDarkMode ? 'bg-gray-600' : 'bg-gray-400'}`}></div>
+          )}
+          <button
+            onClick={() => handlePageClick(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            aria-label="Go to next page"
+            className={`px-3 py-1 rounded transition-colors ${
+              currentPage === totalPages
+                ? 'opacity-50 cursor-not-allowed'
+                : 'hover:bg-gray-600'
+            } ${isDarkMode ? 'text-white' : 'text-gray-900'}`}
+          >
+            &gt;
+          </button>
+        </div>
+      </div>
+
+      {/* Page Jump - Separate from the bordered pagination section */}
+      <div className={`flex items-center px-2 py-1 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-300'}`}>
+        <span className={`text-xs mr-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+          Jump:
+        </span>
+        <input
+          type="text"
+          value={jumpPage}
+          onChange={handleJumpInputChange}
+          onKeyPress={handleJumpInputKeyPress}
+          placeholder={currentPage.toString()}
+          className={`w-12 px-1 py-0.5 text-xs text-center rounded border-none outline-none ${
+            isDarkMode
+              ? 'bg-gray-600 text-white placeholder-gray-400'
+              : 'bg-gray-200 text-gray-900 placeholder-gray-600'
+          }`}
+          title={`Type page number and press Enter (1-${totalPages})`}
+        />
+        <span className={`ml-1 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+          /{totalPages}
+        </span>
       </div>
     </nav>
   );

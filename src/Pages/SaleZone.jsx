@@ -539,7 +539,12 @@ const SaleZone = () => {
                 </div>
               </div>
 
-              {!isSearchMode && <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={handlePageChange} isDarkMode={isDarkMode} />}
+              
+              {!isSearchMode && (
+                <div className="mt-12 mb-8"> 
+                  <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={handlePageChange} isDarkMode={isDarkMode} />
+                </div>
+              )}
             </>
           )
         )}
