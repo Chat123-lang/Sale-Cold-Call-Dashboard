@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react'; // Import useRef
 import Table from '../components/Table';
 import Search from '../components/Search';
 import Pagination from '../components/Pagination';
@@ -6,33 +6,54 @@ import ShopDetails from '../components/ShopDetails';
 import { RestaurantIcon, CafeIcon, FilterIcon } from 'src/Icons';
 import takeawayImg from '../images/takeaway.png';
 import sadMaskImg from '../images/sad-mask.png';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+
+// Helper to transform API data
+const transformApiData = (apiResults) => {
+  return apiResults.map((item, index) => ({
+    id: item.shop_id_company || `shop-${Date.now()}-${index}`,
+    name: item.shop_name || 'Unknown Shop',
+    serviceType: item.category || 'Unknown',
+    postcode: item.postcode || 'N/A',
+    city: extractCityFromAddress(item.address) || 'Unknown',
+    website: item.website || '',
+    status: item.is_open_now ? 'open' : 'closed',
+    address: item.address || '',
+    phone: item.phone || '',
+    rating: item.rating || 'N/A',
+    total_reviews: item.total_reviews || 0,
+    latitude: item.latitude || '',
+    longitude: item.longitude || '',
+    opening_hours: item.opening_hours || '',
+    services: item.services || '',
+    providers: item.providers || '',
+    provider_url: item.provider_url || '',
+    search_txt: item.search_txt || '',
+    category: item.category || 'Unknown'
+  }));
+};
+
+// Helper to extract city from address string
+const extractCityFromAddress = (address) => {
+  if (!address) return 'Unknown';
+  const parts = address.split(',');
+  return parts.length > 1 ? parts[parts.length - 2].trim() : 'Unknown';
+};
 
 // Main component for displaying and managing shop data
 const SaleZone = () => {
+  const queryClient = useQueryClient();
+
   // State for search term and filters
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchInput, setSearchInput] = useState(''); 
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(''); 
   const [filters, setFilters] = useState({ city: '', postcode: '', category: 'takeaway' });
   const [tempFilters, setTempFilters] = useState({ city: '', postcode: '' });
   const [showFilters, setShowFilters] = useState(false);
   const [selectedShop, setSelectedShop] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // State for API data and loading status
-  const [shopData, setShopData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [pageLoading, setPageLoading] = useState(false);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [totalCount, setTotalCount] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-
-  // State for search functionality
-  const [isSearchMode, setIsSearchMode] = useState(false);
-  const [searchResults, setSearchResults] = useState([]);
-  const [searchError, setSearchError] = useState(null);
-
-  // State for storing all shops for filter options
-  const [allShopsForFilters, setAllShopsForFilters] = useState([]);
+  // Constants
   const itemsPerPage = 10;
   const isDarkMode = true;
 
@@ -42,119 +63,68 @@ const SaleZone = () => {
     'restaurants': { label: 'Restaurant', searchText: 'restaurants' },
     'cafe': { label: 'Café', searchText: 'cafe' }
   };
-
   const orderedCategories = Object.keys(categoryMapping);
 
-  // Transform API data to match the structure expected by the application
-  const transformApiData = (apiResults) => {
-    return apiResults.map((item, index) => ({
-      id: item.shop_id_company || `shop-${Date.now()}-${index}`,
-      name: item.shop_name || 'Unknown Shop',
-      serviceType: item.category || 'Unknown',
-      postcode: item.postcode || 'N/A',
-      city: extractCityFromAddress(item.address) || 'Unknown',
-      website: item.website || '',
-      status: item.is_open_now ? 'open' : 'closed',
-      address: item.address || '',
-      phone: item.phone || '',
-      rating: item.rating || 'N/A',
-      total_reviews: item.total_reviews || 0,
-      latitude: item.latitude || '',
-      longitude: item.longitude || '',
-      opening_hours: item.opening_hours || '',
-      services: item.services || '',
-      providers: item.providers || '',
-      provider_url: item.provider_url || '',
-      search_txt: item.search_txt || '',
-      category: item.category || 'Unknown'
-    }));
-  };
-
-  // Helper function to extract city from address string
-  const extractCityFromAddress = (address) => {
-    if (!address) return 'Unknown';
-    const parts = address.split(',');
-    return parts.length > 1 ? parts[parts.length - 2].trim() : 'Unknown';
-  };
-
-  // Fetch shop data from API based on page and search text
-  const fetchShopData = async (page = 1, showPageLoader = false, searchText = null) => {
-    try {
-      if (showPageLoader) {
-        setPageLoading(true);
-      } else {
-        setLoading(true);
-      }
-      setError(null);
-
-      const currentSearchText = searchText || categoryMapping[filters.category]?.searchText || 'takeaway';
-      // Updated API URL - changed from search_txt to search parameter
-      const url = `https://sale.mega-data.co.uk/google-map-data/?search=${currentSearchText}&page=${page}`;
+  // --- React Query for Main Shop Data ---
+  const {
+    data: mainShopData,
+    isLoading: isMainDataLoading,
+    isFetching: isMainDataFetching,
+    error: mainDataError,
+    refetch: refetchMainData
+  } = useQuery({
+    queryKey: ['shops', filters.category, currentPage],
+    queryFn: async () => {
+      const currentSearchText = categoryMapping[filters.category]?.searchText || 'takeaway';
+      const url = `https://sale.mega-data.co.uk/google-map-data/?search=${currentSearchText}&page=${currentPage}`;
 
       const response = await fetch(url, {
         method: 'GET',
-        headers: {
-          'accept': 'application/json',
-        },
+        headers: { 'accept': 'application/json' },
       });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-
       const data = await response.json();
       if (data.results && Array.isArray(data.results)) {
-        const transformedData = transformApiData(data.results);
-        setShopData(transformedData);
-        setTotalPages(data.totalPages || 0);
-        setCurrentPage(data.currentPage || page);
-        setTotalCount((data.totalPages || 0) * 10);
-
-        if (page === 1 && !showPageLoader) {
-          setAllShopsForFilters(transformedData);
-        }
+        return {
+          transformedData: transformApiData(data.results),
+          totalPages: data.totalPages || 0,
+          currentPage: data.currentPage || currentPage,
+        };
       } else {
         throw new Error('Invalid API response format');
       }
-    } catch (err) {
-      console.error('Error fetching shop data:', err);
-      setError(err.message);
-      setShopData([]);
-    } finally {
-      setLoading(false);
-      setPageLoading(false);
-    }
-  };
+    },
+    placeholderData: (previousData) => previousData,
+    staleTime: 5 * 60 * 1000,
+    keepPreviousData: true,
+  });
 
-  // Search shops within the current category only
-  const searchShopsAPI = async (searchQuery) => {
-    if (!searchQuery.trim()) {
-      setIsSearchMode(false);
-      setSearchResults([]);
-      return;
-    }
+  // --- React Query for Search Results ---
+  const {
+    data: searchResultsData,
+    isLoading: isSearchLoading,
+    isFetching: isSearchFetching,
+    error: searchError,
+    refetch: refetchSearchResults,
+    isFetched: searchResultsFetched,
+  } = useQuery({
+    queryKey: ['searchResults', filters.category, debouncedSearchQuery],
+    queryFn: async () => {
+      if (!debouncedSearchQuery.trim()) return [];
 
-    try {
-      setSearchLoading(true);
-      setSearchError(null);
-      setIsSearchMode(true);
-
-      // Only search within the current category
       const currentCategory = filters.category;
       const searchText = categoryMapping[currentCategory]?.searchText || 'takeaway';
       
-      // Search multiple pages to get more comprehensive results within the category
       const searchPromises = [1, 2, 3].map(async (page) => {
         const url = `https://sale.mega-data.co.uk/google-map-data/?search=${searchText}&page=${page}`;
-
         try {
           const response = await fetch(url, {
             method: 'GET',
-            headers: {
-              'accept': 'application/json',
-            },
+            headers: { 'accept': 'application/json' },
           });
-
           if (response.ok) {
             const data = await response.json();
             if (data.results && Array.isArray(data.results)) {
@@ -171,9 +141,9 @@ const SaleZone = () => {
       const allResults = await Promise.all(searchPromises);
       const combinedResults = allResults.flat();
 
-      // Filter results by search query
+      // Filter results by search query client-side from combined results
       const filteredResults = combinedResults.filter((shop) => {
-        const searchLower = searchQuery.toLowerCase();
+        const searchLower = debouncedSearchQuery.toLowerCase(); 
         return (
           shop.name.toLowerCase().includes(searchLower) ||
           shop.phone.toLowerCase().includes(searchLower) ||
@@ -187,104 +157,85 @@ const SaleZone = () => {
       const uniqueResults = filteredResults.filter((shop, index, self) =>
         index === self.findIndex((s) => s.id === shop.id)
       );
+      return uniqueResults;
+    },
+    enabled: !!debouncedSearchQuery.trim(),
+    staleTime: 1 * 60 * 1000,
+  });
 
-      setSearchResults(uniqueResults);
-    } catch (err) {
-      console.error('Error searching shops:', err);
-      setSearchError(err.message);
-      setSearchResults([]);
-    } finally {
-      setSearchLoading(false);
-    }
-  };
+  // Debounce logic for setting the actual query term
+  const debounceTimer = useRef(null); 
 
-  // Debounce search function to limit API calls while typing
-  const debounceTimer = React.useRef(null);
-  const debouncedSearch = useCallback((searchQuery) => {
+  useEffect(() => {
+    // Clear any existing timer
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
     }
 
+    // Set a new timer to update debouncedSearchQuery after delay
     debounceTimer.current = setTimeout(() => {
-      searchShopsAPI(searchQuery);
+      setDebouncedSearchQuery(searchInput); 
     }, 500);
-  }, [filters.category]); // Add filters.category as dependency
 
-  // Handle search term changes with debounce
-  useEffect(() => {
-    if (searchTerm.trim()) {
-      debouncedSearch(searchTerm);
-    } else {
-      setIsSearchMode(false);
-      setSearchResults([]);
-      setSearchError(null);
-    }
-
+    
     return () => {
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
       }
     };
-  }, [searchTerm, debouncedSearch]);
+  }, [searchInput]); 
 
-  // Clear search when category changes
+  // Clear debouncedSearchQuery and searchInput when category changes
   useEffect(() => {
-    if (searchTerm.trim()) {
-      // Re-trigger search for new category
-      debouncedSearch(searchTerm);
-    }
-  }, [filters.category]);
+    // This will cause a refetch of searchResults if debouncedSearchQuery was not empty
+    // and then clear it, effectively resetting search when category changes.
+    setSearchInput('');
+    setDebouncedSearchQuery('');
+    queryClient.invalidateQueries(['searchResults']); 
+  }, [filters.category, queryClient]); 
 
-  // Fetch all shops for filter options
-  const fetchAllShopsForFilters = async (searchText = 'takeaway') => {
-    try {
-      // Updated API URLs - changed from search_txt to search parameter
-      const responses = await Promise.all([
-        fetch(`https://sale.mega-data.co.uk/google-map-data/?search=${searchText}&page=1`),
-        fetch(`https://sale.mega-data.co.uk/google-map-data/?search=${searchText}&page=2`),
-        fetch(`https://sale.mega-data.co.uk/google-map-data/?search=${searchText}&page=3`)
-      ]);
-
-      const allData = [];
-      for (const response of responses) {
+  // --- React Query for All Shops for Filters (Cached for select options) ---
+  const { data: allShopsForFiltersData } = useQuery({
+    queryKey: ['allShopsForFilters', filters.category],
+    queryFn: async () => {
+      const initialSearchText = categoryMapping[filters.category]?.searchText || 'takeaway';
+      const fetchPromises = [1, 2, 3].map(async (page) => {
+        const url = `https://sale.mega-data.co.uk/google-map-data/?search=${initialSearchText}&page=${page}`;
+        const response = await fetch(url);
         if (response.ok) {
           const data = await response.json();
-          if (data.results) {
-            allData.push(...transformApiData(data.results));
-          }
+          return data.results ? transformApiData(data.results) : [];
         }
-      }
-      setAllShopsForFilters(allData);
-    } catch (err) {
-      console.error('Error fetching filter data:', err);
-      setAllShopsForFilters(shopData);
-    }
-  };
+        return [];
+      });
+      const allData = (await Promise.all(fetchPromises)).flat();
+      return allData;
+    },
+    staleTime: 10 * 60 * 1000,
+    cacheTime: 30 * 60 * 1000,
+  });
 
-  // Fetch initial data on component mount
-  useEffect(() => {
-    const initialSearchText = categoryMapping[filters.category]?.searchText || 'takeaway';
-    fetchShopData(1, false, initialSearchText);
-    fetchAllShopsForFilters(initialSearchText);
-  }, []);
+  // Derive state from React Query
+  const shopData = mainShopData?.transformedData || [];
+  const totalPages = mainShopData?.totalPages || 0;
+  const totalCount = totalPages * itemsPerPage;
+  const isPageLoading = isMainDataFetching;
+  const isLoadingInitial = isMainDataLoading && !mainShopData;
+
+  // Combined loading state for UI
+  const overallLoading = isLoadingInitial || isPageLoading || isSearchFetching;
 
   // Handle page change for pagination
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= totalPages && newPage !== currentPage) {
       setCurrentPage(newPage);
-      const currentSearchText = categoryMapping[filters.category]?.searchText || 'takeaway';
-      fetchShopData(newPage, true, currentSearchText);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
-  // Get unique cities and postcodes for filter options
-  const uniqueCities = [...new Set(allShopsForFilters.map((shop) => shop.city))];
-  const uniquePostcodes = [...new Set(allShopsForFilters.map((shop) => shop.postcode))];
-
   // Handle category click to filter shops by category
   const handleCategoryClick = (category) => {
-    const newCategory = filters.category === category ? 'takeaway' : category;
+    const newCategory = category;
     setFilters((prev) => ({
       ...prev,
       category: newCategory,
@@ -294,16 +245,13 @@ const SaleZone = () => {
     setTempFilters({ city: '', postcode: '' });
     setCurrentPage(1);
 
-    // Clear search results when switching categories
-    if (searchTerm.trim()) {
-      setSearchResults([]);
-      setIsSearchMode(false);
-    }
-
-    const searchText = categoryMapping[newCategory]?.searchText || 'takeaway';
-    fetchShopData(1, true, searchText);
-    fetchAllShopsForFilters(searchText);
+    // Invalidate main shops and all shops for filters queries to refetch with new category
+    queryClient.invalidateQueries(['shops', newCategory]);
+    queryClient.invalidateQueries(['allShopsForFilters', newCategory]);
+    
+    
   };
+
 
   // Handle city and postcode filter changes
   const handleCityChange = (e) => {
@@ -332,21 +280,26 @@ const SaleZone = () => {
     }));
     setShowFilters(false);
     setCurrentPage(1);
-    const currentSearchText = categoryMapping[filters.category]?.searchText || 'takeaway';
-    fetchShopData(1, true, currentSearchText);
+    // Invalidate main shops query to refetch with new filters (React Query handles combining with category and page)
+    queryClient.invalidateQueries(['shops', filters.category]);
   };
 
-  // Get shops to display based on search or category mode
-  const getDisplayShops = () => {
-    const shops = isSearchMode ? searchResults : shopData;
-    return shops.filter((shop) => {
-      const matchesCity = filters.city ? shop.city === filters.city : true;
-      const matchesPostcode = filters.postcode ? shop.postcode === filters.postcode : true;
-      return matchesCity && matchesPostcode;
-    });
-  };
+  // Get unique cities and postcodes for filter options
+  const uniqueCities = [...new Set(allShopsForFiltersData?.map((shop) => shop.city) || [])];
+  const uniquePostcodes = [...new Set(allShopsForFiltersData?.map((shop) => shop.postcode) || [])];
+  
+  const filteredPostcodesByCity = tempFilters.city
+    ? [...new Set(allShopsForFiltersData?.filter((shop) => shop.city === tempFilters.city).map((shop) => shop.postcode) || [])]
+    : uniquePostcodes;
 
-  const displayShops = getDisplayShops();
+  // Determine which shops to display: search results or main category data
+  // isSearchMode is true if there's a debounced query and results have been fetched
+  const isSearchMode = debouncedSearchQuery.trim().length > 0 && searchResultsFetched;
+  const displayShops = (isSearchMode ? (searchResultsData || []) : shopData).filter((shop) => {
+    const matchesCity = filters.city ? shop.city === filters.city : true;
+    const matchesPostcode = filters.postcode ? shop.postcode === filters.postcode : true;
+    return matchesCity && matchesPostcode;
+  });
 
   // Handle row click to show shop details
   const handleRowClick = (shop) => {
@@ -373,7 +326,7 @@ const SaleZone = () => {
   };
 
   // Render loading state
-  if (loading) {
+  if (isLoadingInitial) {
     return (
       <div className="bg-gray-900 text-white min-h-screen">
         <header className="p-0 shadow-sm bg-gray-800">
@@ -401,7 +354,7 @@ const SaleZone = () => {
   }
 
   // Render error state
-  if (error) {
+  if (mainDataError) {
     return (
       <div className="bg-gray-900 text-white min-h-screen">
         <header className="p-0 shadow-sm bg-gray-800">
@@ -422,8 +375,8 @@ const SaleZone = () => {
             <p className="text-white text-2xl font-medium text-center mb-4" style={{ lineHeight: '1.5' }}>
               Sorry! Unable to load shop data.
             </p>
-            <p className="text-gray-400 text-center mb-6">Error: {error}</p>
-            <button onClick={() => fetchShopData(currentPage, true)} className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded transition-colors">
+            <p className="text-gray-400 text-center mb-6">Error: {mainDataError.message}</p>
+            <button onClick={() => refetchMainData()} className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded transition-colors">
               Try Again
             </button>
           </div>
@@ -439,7 +392,7 @@ const SaleZone = () => {
         <div className="container mx-auto">
           <div className="flex px-3 py-4 rounded-b-2xl bg-gray-700">
             {orderedCategories.map((category) => (
-              <button key={category} onClick={() => handleCategoryClick(category)} disabled={pageLoading || searchLoading} className={`flex-1 flex items-center justify-center gap-2 text-lg border-0 transition-all duration-300 text-center py-4 ${filters.category === category ? 'bg-gray-600 text-gray-200 scale-95 rounded-lg' : 'bg-gray-700 text-gray-400'} ${(pageLoading || searchLoading) ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              <button key={category} onClick={() => handleCategoryClick(category)} disabled={overallLoading} className={`flex-1 flex items-center justify-center gap-2 text-lg border-0 transition-all duration-300 text-center py-4 ${filters.category === category ? 'bg-gray-600 text-gray-200 scale-95 rounded-lg' : 'bg-gray-700 text-gray-400'} ${overallLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                 {getIconForCategory(category)}
                 <span>{categoryMapping[category]?.label}</span>
               </button>
@@ -450,11 +403,12 @@ const SaleZone = () => {
       <main className="container mx-auto p-4 space-y-6">
         <div className="flex justify-between items-center mt-5 pb-4">
           <div className="max-w-md md:max-w-xl lg:max-w-2xl flex-grow">
-            <Search searchTerm={searchTerm} setSearchTerm={setSearchTerm} isDarkMode={isDarkMode} isLoading={searchLoading} />
+            {/* Pass searchInput and setSearchInput directly for immediate feedback */}
+            <Search searchTerm={searchInput} setSearchTerm={setSearchInput} isDarkMode={isDarkMode} isLoading={isSearchLoading || isSearchFetching} />
           </div>
           <div className="flex items-center space-x-3 ml-4">
             <div className="relative inline-block text-left">
-              <button onClick={() => { setTempFilters({ city: filters.city, postcode: filters.postcode }); setShowFilters(true); }} disabled={pageLoading || searchLoading} className={`flex items-center gap-2 px-4 py-2 rounded transition-colors bg-gray-700 border text-gray-200 hover:bg-gray-600 ${(pageLoading || searchLoading) ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              <button onClick={() => { setTempFilters({ city: filters.city, postcode: filters.postcode }); setShowFilters(true); }} disabled={overallLoading} className={`flex items-center gap-2 px-4 py-2 rounded transition-colors bg-gray-700 border text-gray-200 hover:bg-gray-600 ${overallLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                 <FilterIcon fill={'white'} />
                 <span>Filter</span>
               </button>
@@ -474,7 +428,7 @@ const SaleZone = () => {
                         <label htmlFor="filter-postcode" className="block text-xs font-medium mb-1 text-gray-300">Select a postcode {tempFilters.city && <span className="text-xs ml-1 opacity-75">({tempFilters.city})</span>}</label>
                         <select id="filter-postcode" value={tempFilters.postcode} onChange={handlePostcodeChange} disabled={!tempFilters.city} className="w-full px-3 py-2 text-sm rounded border focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 border-gray-600">
                           <option value="">{tempFilters.city ? `All ${tempFilters.city} Postcodes` : 'Select a city first'}</option>
-                          {tempFilters.city ? allShopsForFilters.filter((shop) => shop.city === tempFilters.city).map((shop) => shop.postcode).filter((pc, i, self) => self.indexOf(pc) === i).map((postcode) => <option key={postcode} value={postcode}>{postcode}</option>) : uniquePostcodes.map((postcode) => <option key={postcode} value={postcode}>{postcode}</option>)}
+                          {filteredPostcodesByCity.map((postcode) => <option key={postcode} value={postcode}>{postcode}</option>)}
                         </select>
                       </div>
                       {!tempFilters.city && <p className="mt-1 text-xs text-gray-400">Select a city to see postcodes</p>}
@@ -493,18 +447,19 @@ const SaleZone = () => {
         <div className="mb-4">
           {isSearchMode ? (
             <div>
-              <h2 className="text-xl font-semibold text-gray-200 mb-2">Search Results for "{searchTerm}" in {categoryMapping[filters.category]?.label}</h2>
-              <p className="text-sm text-gray-400">{searchLoading ? 'Searching...' : `Found ${displayShops.length} results in ${categoryMapping[filters.category]?.label} category`}</p>
+              {/* Display searchInput for immediate feedback, but debouncedSearchQuery for actual query */}
+              <h2 className="text-xl font-semibold text-gray-200 mb-2">Search Results for "{debouncedSearchQuery}" in {categoryMapping[filters.category]?.label}</h2>
+              <p className="text-sm text-gray-400">{isSearchLoading || isSearchFetching ? 'Searching...' : `Found ${displayShops.length} results in ${categoryMapping[filters.category]?.label} category`}</p>
             </div>
           ) : (
             <div>
               <h2 className="text-xl font-semibold text-gray-200 mb-2">{categoryMapping[filters.category]?.label || 'Takeaway'} Shops</h2>
-              <p className="text-sm text-gray-400">Showing results for: {categoryMapping[filters.category]?.searchText || 'takeaway'}</p>
             </div>
           )}
         </div>
 
-        {searchLoading && (
+        {/* Loading indicators */}
+        {(isSearchLoading || isSearchFetching) && (
           <div className="flex justify-center items-center py-8">
             <div className="text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto mb-2"></div>
@@ -513,7 +468,7 @@ const SaleZone = () => {
           </div>
         )}
 
-        {pageLoading && !searchLoading && (
+        {isPageLoading && !isSearchMode && (
           <div className="flex justify-center items-center py-8">
             <div className="text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-500 mx-auto mb-2"></div>
@@ -521,23 +476,26 @@ const SaleZone = () => {
             </div>
           </div>
         )}
-
+        
+        {/* Error messages */}
         {searchError && (
           <div className="flex flex-col items-center justify-center p-8">
             <img src={sadMaskImg} alt="Error" className="w-32 h-32 mb-4" />
             <p className="text-white text-2xl font-medium text-center mb-4" style={{ lineHeight: '1.5' }}>Search Error</p>
-            <p className="text-gray-400 text-center mb-6">Error: {searchError}</p>
-            <button onClick={() => { setSearchError(null); if (searchTerm.trim()) searchShopsAPI(searchTerm); }} className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded transition-colors">Try Again</button>
+            <p className="text-gray-400 text-center mb-6">Error: {searchError.message}</p>
+            <button onClick={() => refetchSearchResults()} className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded transition-colors">Try Again</button>
           </div>
         )}
 
-        {!pageLoading && !searchLoading && !searchError && displayShops.length === 0 ? (
+        {/* No results message */}
+        {!overallLoading && !mainDataError && !searchError && displayShops.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8">
             <img src={sadMaskImg} alt="Sad Mask" className="w-32 h-32 mb-4" />
-            <p className="text-white text-2xl font-medium text-center" style={{ lineHeight: '1.5' }}>{isSearchMode ? `No results found for "${searchTerm}" in ${categoryMapping[filters.category]?.label}` : "Sorry! No results match your filters."} <br /> Please try again.</p>
+            <p className="text-white text-2xl font-medium text-center" style={{ lineHeight: '1.5' }}>{isSearchMode ? `No results found for "${debouncedSearchQuery}" in ${categoryMapping[filters.category]?.label}` : "Sorry! No results match your filters."} <br /> Please try again.</p>
           </div>
         ) : (
-          !pageLoading && !searchLoading && !searchError && (
+          // Display table and pagination
+          !overallLoading && !mainDataError && !searchError && (
             <>
               <div className="flex justify-between items-center mb-4">
                 {isSearchMode ? (
@@ -555,7 +513,6 @@ const SaleZone = () => {
                   <Table shops={displayShops} isDarkMode={isDarkMode} onRowClick={handleRowClick} />
                 </div>
               </div>
-
               
               {!isSearchMode && (
                 <div className="mt-12 mb-8"> 
