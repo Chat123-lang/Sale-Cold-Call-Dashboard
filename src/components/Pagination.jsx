@@ -1,3 +1,4 @@
+// src/components/Pagination.jsx
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
 
@@ -142,8 +143,8 @@ const Pagination = ({ currentPage, totalPages, onPageChange, isDarkMode }) => {
       </div>
 
       {/* Page Jump - Separate from the bordered pagination section */}
-      <div className={`flex items-center px-2 py-1 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-300'}`}>
-        <span className={`text-xs mr-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+      <div className={`flex items-center p-1 rounded-lg border ${isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-300 border-gray-400'}`}>
+        <span className={`text-sm mr-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
           Jump:
         </span>
         <input
@@ -152,14 +153,14 @@ const Pagination = ({ currentPage, totalPages, onPageChange, isDarkMode }) => {
           onChange={handleJumpInputChange}
           onKeyPress={handleJumpInputKeyPress}
           placeholder={currentPage.toString()}
-          className={`w-12 px-1 py-0.5 text-xs text-center rounded border-none outline-none ${
+          className={`w-12 px-1 py-1 text-sm text-center rounded border-none outline-none ${
             isDarkMode
               ? 'bg-gray-600 text-white placeholder-gray-400'
               : 'bg-gray-200 text-gray-900 placeholder-gray-600'
           }`}
           title={`Type page number and press Enter (1-${totalPages})`}
         />
-        <span className={`ml-1 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+        <span className={`ml-1 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
           /{totalPages}
         </span>
       </div>
